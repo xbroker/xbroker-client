@@ -1,6 +1,6 @@
 {
   "name": "xbroker-client",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "XBroker Javascript Client",
   "main": "dist/index.js",
   "scripts": {
