@@ -4,10 +4,9 @@
 
 var createClient = require('../dist').createClient,
     repl       = require('repl'),
-    colors     = require('colors/safe'),
     fs         = require('fs'),
     os         = require('os'),
-    portfinder = require('portfinder'),
+    colors     = require('colors/safe'),
     argv       = require('optimist').argv;
 
 if (argv.h || argv.help) {
