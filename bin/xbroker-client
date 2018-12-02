@@ -1,0 +1,99 @@
+#!/usr/bin/env node
+
+'use strict';
+
+var createClient = require('../dist').createClient,
+    repl       = require('repl'),
+    colors     = require('colors/safe'),
+    fs         = require('fs'),
+    os         = require('os'),
+    portfinder = require('portfinder'),
+    argv       = require('optimist').argv;
+
+if (argv.h || argv.help) {
+  console.log([
+    'usage: xbroker-client [options]',
+    '',
+    'options:',
+    '  -u --url     the URL of the XBroker Server, default: localhost:3555',
+    '  -s --silent  suppress log messages from output',
+    '  -U --utc     use UTC time format in log messages',
+    '',
+    '  -h --help    print this list and exit',
+  ].join('\n'));
+  process.exit();
+}
+
+var url = argv.u || argv.url || "http://localhost:3555",
+    utc = argv.U || argv.utc || false,
+    logger;
+
+var client = createClient(url);
+
+if (!argv.s && !argv.silent) {
+  logger = {
+    info: console.log,
+    request: function (message, error) {
+      var date = utc ? new Date().toUTCString() : new Date();
+      if (error) {
+        logger.info(
+          '[%s] "%s %s" Error (%s): "%s"',
+          date, colors.red(req.method), colors.red(req.url),
+          colors.red(error.status.toString()), colors.red(error.message)
+        );
+      }
+      else {
+        logger.info(
+          '[%s] "%s"',
+          date, message
+        );
+      }
+    }
+  };
+}
+else if (colors) {
+  logger = {
+    info: function () {},
+    request: function () {}
+  };
+}
+
+var replServer = repl.start({ prompt: '> ' });
+
+replServer.on('exit', () => {
+  logger.info(colors.red('X-Broker Client stopped.'));
+  process.exit();
+});
+
+replServer.defineCommand('x', {
+  help: 'Submit X-Broker Command',
+  action(s) {
+    var command = JSON.parse(s);
+    console.log(command);
+    //this.clearBufferedCommand();
+
+    client.submit(command, (error, result) => {
+      logger.request(JSON.stringify(result), error);
+    });
+    //this.displayPrompt();
+  }
+});
+
+if (process.platform === 'win32') {
+  require('readline').createInterface({
+    input: process.stdin,
+    output: process.stdout
+  }).on('SIGINT', function () {
+    process.emit('SIGINT');
+  });
+}
+
+process.on('SIGINT', function () {
+  logger.info(colors.red('X-Broker Client stopped.'));
+  process.exit();
+});
+
+process.on('SIGTERM', function () {
+  logger.info(colors.red('X-Broker Client stopped.'));
+  process.exit();
+});

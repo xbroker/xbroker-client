@@ -8,6 +8,9 @@
  * @flow
  */
 
+import WebSocket from 'isomorphic-ws';
+
+
 declare type CommandArg = string|number|boolean|{};
 
 declare type Command = {
@@ -402,9 +405,10 @@ export default class XBrokerClient {
     return command.tag;
   }
 
-  command(agent: string, cmd: string, args: Array<CommandArg>, callback: Callback, listener: ?Callback): string {
-    const command = {tag: this.seq.toString(), agent: agent, cmd: cmd, args: args};
+  submit(command: Command, callback: Callback, listener: ?Callback): string {
+    command.tag = this.seq.toString();
     this.seq++;
+
     const commandEntry: CommandEntry = {
       command,
       callback,
@@ -417,6 +421,11 @@ export default class XBrokerClient {
     this.send();
 
     return command.tag;
+  }
+
+  command(agent: string, cmd: string, args: Array<CommandArg>, callback: Callback, listener: ?Callback): string {
+    const command = {tag: "", agent: agent, cmd: cmd, args: args};
+    return this.submit(command, callback, listener);
   }
 
   commandAsync(agent: string, cmd: string, args: Array<CommandArg>, listener: ?Callback): Promise<mixed> {
