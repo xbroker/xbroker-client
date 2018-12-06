@@ -125,9 +125,9 @@ export default class XBrokerClient {
     this.reconnectIntervalMs = this.maxReconnectIntervalMs;
 
     try {
-        this.socket = new WebSocket(this.url);
-        this.initSocket(this.socket);
-        this.startWatchdog();
+      this.socket = new WebSocket(this.url, {rejectUnauthorized: false});
+      this.initSocket(this.socket);
+      this.startWatchdog();
     } catch(e) {
       throw e;
     }
@@ -378,12 +378,13 @@ export default class XBrokerClient {
         }
         }
 
-        this.sentCommands[command.tag] = commandEntry;
         try {
           this.socket.send(JSON.stringify(command));
+          this.sentCommands[command.tag] = commandEntry;
+          this.sentCommandsCnt++;
         } catch(e) {
+          this.fail(commandEntry, "Send failed: "+e.message);
         }
-        this.sentCommandsCnt++;
       }
     }
   }
