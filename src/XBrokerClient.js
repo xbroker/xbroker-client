@@ -50,6 +50,7 @@ declare type Callback = (error: ?Error, data: ?Resp) => void;
 export default class XBrokerClient {
 
   url: string;
+  browser: boolean;
   socket: any;
   seq: number;
 
@@ -85,8 +86,9 @@ export default class XBrokerClient {
 
   isAlive: boolean;
 
-  constructor(url: string, props: any) {
+  constructor(url: string, props: any, browser?: boolean) {
     this.url = url;
+    this.browser = false;
     this.seq = 1;
     this.sentCommands = {};
     this.subscriptions = {};
@@ -104,6 +106,9 @@ export default class XBrokerClient {
     this.watchdogTimer = null;
     this.isAlive = false;
 
+    if(browser) {
+      this.browser = true;
+    }
     if(this.props) {
       if(this.props.defaultTimeoutMs !== undefined && this.props.defaultTimeoutMs !== null) {
         this.defaultTimeoutMs = this.props.defaultTimeoutMs;
@@ -125,7 +130,12 @@ export default class XBrokerClient {
     this.reconnectIntervalMs = this.maxReconnectIntervalMs;
 
     try {
-      this.socket = new WebSocket(this.url, {rejectUnauthorized: false});
+      if(this.browser) {
+        this.socket = new WebSocket(this.url);
+      } else {
+        const options = {rejectUnauthorized: false};
+        this.socket = new WebSocket(this.url, options);
+      }
       this.initSocket(this.socket);
       this.startWatchdog();
     } catch(e) {
