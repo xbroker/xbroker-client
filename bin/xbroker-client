@@ -15,6 +15,9 @@ if (argv.h || argv.help) {
     '',
     'options:',
     '  -u --url     the URL of the XBroker Server, default: localhost:3555',
+    '  -f --failFast    fail commands immediatelly if websocket is not open',
+    '  -t --timeout     the command timeout in ms (default 30000)',
+    '  -w --watchdog     the watchdog interval in ms (default 5000)',
     '  -s --silent  suppress log messages from output',
     '  -U --utc     use UTC time format in log messages',
     '',
@@ -25,11 +28,16 @@ if (argv.h || argv.help) {
 
 var url = argv.u || argv.url || "http://localhost:3555",
     utc = argv.U || argv.utc || false,
+    timeoutMs = argv.t || argv.timeout || 30000,
+    watchdogIntervalMs = argv.w || argv.watchdog || 5000,
+    failFast = argv.f || argv.failFast || false,
+    silent = argv.s || argv.silent,
     logger;
 
-var client = createClient(url);
+var props = {timeoutMs, watchdogIntervalMs, failFast};
+var client = createClient(url, props);
 
-if (!argv.s && !argv.silent) {
+if (!silent) {
   logger = {
     info: console.log,
     request: function (message, error) {
@@ -59,23 +67,39 @@ else if (colors) {
 
 var replServer = repl.start({ prompt: '> ' });
 
-replServer.on('exit', () => {
-  logger.info(colors.red('X-Broker Client stopped.'));
-  process.exit();
+replServer.defineCommand('r', {
+  help: 'Run X-Broker Command',
+  action(s) {
+    var command = JSON.parse(s);
+
+    client.submitAsync(command)
+    .then(result => logger.request(JSON.stringify(result)))
+    .then(() => this.displayPrompt())
+    .catch(error => logger.request(null, error));
+  }
+});
+
+replServer.defineCommand('t', {
+  help: 'Test X-Broker Command',
+  action(s) {
+    var command = JSON.parse('{"agent": "redis", "cmd": "keys", "args": ["*"]}');
+
+    client.submitAsync(command)
+    .then(result => logger.request(JSON.stringify(result)))
+    .then(() => this.displayPrompt())
+    .catch(error => logger.request(null, error));
+  }
 });
 
 replServer.defineCommand('x', {
-  help: 'Submit X-Broker Command',
+  help: 'Exit X-Broker Client',
   action(s) {
-    var command = JSON.parse(s);
-    console.log(command);
-    //this.clearBufferedCommand();
-
-    client.submit(command, (error, result) => {
-      logger.request(JSON.stringify(result), error);
-    });
-    //this.displayPrompt();
+    process.exit();
   }
+});
+
+replServer.on('exit', () => {
+  process.exit();
 });
 
 if (process.platform === 'win32') {

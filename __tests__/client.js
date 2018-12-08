@@ -15,7 +15,7 @@ const agent = "redis"
 var client
 
 beforeEach(() => {
-  client = new XBrokerClient(url)
+  client = new XBrokerClient(url, {failFast: true})
 })
 
 afterEach(() => {
@@ -44,7 +44,7 @@ test("illegal command", function(done) {
       expect(result).not.toBeNull()
       if(result) {
         expect(result.status).toBe("error")
-        expect(result.errorMsg).toMatch(("ReplyError: ERR unknown command 'eexists'": any))
+        expect(result.err).toMatch(("ReplyError: ERR unknown command 'eexists'": any))
       }
       done()
     })

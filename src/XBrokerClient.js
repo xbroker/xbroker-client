@@ -10,6 +10,31 @@
 
 import WebSocket from 'isomorphic-ws';
 
+type StatusType =
+  "ok" |
+  "error";
+
+type MessageType =
+  "message" |
+  "pmessage";
+
+declare type Resp = {|
+  tag: string,
+  status: StatusType,
+  err: string,
+  cmd?: string,
+  result?: mixed,
+|};
+
+declare type Message = {|
+  status: MessageType,
+  channel: string,
+  pattern?: string,
+  message: string,
+|};
+
+declare type Callback = (error: ?Error, data: ?Resp) => void;
+declare type Listener = (message: Message) => void;
 
 declare type CommandArg = string|number|boolean|{};
 
@@ -23,29 +48,10 @@ declare type Command = {
 declare type CommandEntry = {
   command: Command,
   callback: Callback,
-  listener: ?Callback,
+  listener: ?Listener,
   expirationTimeMs: number,
   resubscribe: boolean,
 };
-
-type StatusType =
-  "ok" |
-  "error" |
-  "message" |
-  "pmessage";
-
-declare type Resp = {|
-  tag: ?string,
-  status: StatusType,
-  errorMsg: string,
-  command: Command,
-  channel?: string,
-  pattern?: string,
-  result?: mixed,
-  message?: string,
-|};
-
-declare type Callback = (error: ?Error, data: ?Resp) => void;
 
 export default class XBrokerClient {
 
@@ -73,10 +79,10 @@ export default class XBrokerClient {
 
   // Props
   maxSentCommandsCnt: number;
-  defaultTimeoutMs: number;
+  timeoutMs: number;
   maxReconnectIntervalMs: number;
   watchdogIntervalMs: number;
-  batchResults: boolean;
+  failFast: boolean;
 
   // changeState(), setMessage()
   props: any;
@@ -96,10 +102,10 @@ export default class XBrokerClient {
     this.pendingCommands = [];
     this.sentCommandsCnt = 0;
     this.maxSentCommandsCnt = 8;
-    this.defaultTimeoutMs = 30000;
+    this.timeoutMs = 30000;
     this.maxReconnectIntervalMs = 15000;
     this.watchdogIntervalMs = 5000;
-    this.batchResults = false;
+    this.failFast = false;
     this.changeState("init");
     this.props = props;
     this.reconnectTimer = null;
@@ -110,8 +116,8 @@ export default class XBrokerClient {
       this.browser = true;
     }
     if(this.props) {
-      if(this.props.defaultTimeoutMs !== undefined && this.props.defaultTimeoutMs !== null) {
-        this.defaultTimeoutMs = this.props.defaultTimeoutMs;
+      if(this.props.timeoutMs !== undefined && this.props.timeoutMs !== null) {
+        this.timeoutMs = this.props.timeoutMs;
       }
       if(this.props.maxSentCommandsCnt !== undefined && this.props.maxSentCommandsCnt !== null) {
         this.maxSentCommandsCnt = this.props.maxSentCommandsCnt;
@@ -122,25 +128,20 @@ export default class XBrokerClient {
       if(this.props.watchdogIntervalMs !== undefined && this.props.watchdogIntervalMs !== null) {
         this.watchdogIntervalMs = this.props.watchdogIntervalMs;
       }
-      if(this.props.batchResults !== undefined && this.props.batchResults !== null) {
-        this.batchResults = this.props.batchResults;
+      if(this.props.failFast !== undefined && this.props.failFast !== null) {
+        this.failFast = this.props.failFast;
       }
     }
 
     this.reconnectIntervalMs = this.maxReconnectIntervalMs;
 
     try {
-      if(this.browser) {
-        this.socket = new WebSocket(this.url);
-      } else {
-        const options = {rejectUnauthorized: false};
-        this.socket = new WebSocket(this.url, options);
-      }
-      this.initSocket(this.socket);
-      this.startWatchdog();
+      this.createSocket();
     } catch(e) {
-      throw e;
+      this.setMessage("CONNECTION ERROR: "+e.toString());
     }
+
+    this.startWatchdog();
   }
 
   changeState(state: string): void {
@@ -172,22 +173,28 @@ export default class XBrokerClient {
     }
   }
 
-  initSocket(socket: any): void {
+  createSocket(): void {
+    if(this.browser) {
+      this.socket = new WebSocket(this.url);
+    } else {
+      const options = {rejectUnauthorized: false};
+      this.socket = new WebSocket(this.url, options);
+    }
 
-    socket.addEventListener('open', (event) => {
+    this.socket.addEventListener('open', (event) => {
       this.onOpen();
     });
 
-    socket.addEventListener('error', (event) => {
+    this.socket.addEventListener('error', (event) => {
       this.onError();
     });
 
-    socket.addEventListener('message', (event) => {
+    this.socket.addEventListener('message', (event) => {
       const data = event.data;
       this.onMessage(data);
     });
 
-    socket.addEventListener('close', (event) => {
+    this.socket.addEventListener('close', (event) => {
       this.onClose(event);
     });
   }
@@ -211,44 +218,46 @@ export default class XBrokerClient {
     this.setMessage("");
   }
 
-  _processResult(result: Resp, data: string) {
-    if(result.status === "message")
-    {
+  processMessage(message: Message, data: string) {
+    switch(message.status) {
+    case "message": {
       // find a subscription
-      if(!result.channel) {
+      if(!message.channel) {
         this.setMessage("WARNING: no channel in message: "+data);
         return;
       }
-      const commandEntry: CommandEntry = this.subscriptions[result.channel];
+      const commandEntry: CommandEntry = this.subscriptions[message.channel];
       if(!commandEntry) {
         this.setMessage("WARNING: no subscription for a message: "+data);
         return;
       }
       if(commandEntry.listener) {
-        commandEntry.listener(undefined, result);
+        commandEntry.listener(message);
       }
-      return;
+      break;
     }
 
-    if(result.status === "pmessage")
-    {
+    case "pmessage": {
       // find a psubscription
-      if(!result.pattern) {
+      if(!message.pattern) {
         this.setMessage("WARNING: no pattern in pmessage: "+data);
         return;
       }
-      const commandEntry: CommandEntry = this.psubscriptions[result.pattern];
+      const commandEntry: CommandEntry = this.psubscriptions[message.pattern];
       if(!commandEntry) {
         this.setMessage("WARNING: no pattern subscription for a message: "+data);
         return;
       }
       if(commandEntry.listener) {
-        commandEntry.listener(undefined, result);
+        commandEntry.listener(message);
       }
-      return;
+      break;
     }
+    }
+  }
 
-    if(!result.tag) {
+  processResult(result: Resp, data: string) {
+      if(!result.tag) {
       this.setMessage("WARNING: missing tag in a message: "+data);
       return;
     }
@@ -312,8 +321,25 @@ export default class XBrokerClient {
     }
 
     for(let i = 0; i < results.length; i++) {
-      const result: Resp = JSON.parse(results[i]);
-      this._processResult(result, results[i]);
+      const result: any = JSON.parse(results[i]);
+      switch(result.status) {
+        case 'message':
+        case 'pmessage': {
+          this.processMessage(result, results[i]);
+          break;
+        }
+
+        case 'ok':
+        case 'error': {
+          this.processResult(result, results[i]);
+          break;
+        }
+
+        default: {
+          this.setMessage("WARNING: invalid status: "+result.status);
+          break;
+        }
+      }
     }
   }
 
@@ -337,16 +363,26 @@ export default class XBrokerClient {
     const resp: Resp = {
       tag: command.tag,
       status: 'error',
-      errorMsg: message,
-      command: command
+      err: message,
     };
-    commandEntry.callback(null, resp);
+    commandEntry.callback(undefined, resp);
   }
 
   send(): void {
     while(this.pendingCommands.length > 0
-      && this.sentCommandsCnt < this.maxSentCommandsCnt
-      && this.socket.readyState === WebSocket.OPEN) {
+      && this.sentCommandsCnt < this.maxSentCommandsCnt) {
+      if(this.socket.readyState === WebSocket.CONNECTING) {
+        break;
+      } else if(this.socket.readyState !== WebSocket.OPEN) {
+        if(this.failFast) {
+          const commandEntry: CommandEntry = this.pendingCommands.shift();
+          this.fail(commandEntry, "WebSocket is not open (state="+this.socket.readyState+")");
+          continue;
+        } else {
+          break;
+        }
+      }
+
       const commandEntry: CommandEntry = this.pendingCommands.shift();
       const command = commandEntry.command;
 
@@ -399,14 +435,14 @@ export default class XBrokerClient {
     }
   }
 
-  resubscribeCommand(agent: string, cmd: string, args: Array<CommandArg>, callback: Callback, listener: ?Callback): string {
+  resubscribeCommand(agent: string, cmd: string, args: Array<CommandArg>, callback: Callback, listener: ?Listener): string {
     const command = {tag: this.seq.toString(), agent: agent, cmd: cmd, args: args};
     this.seq++;
     const commandEntry: CommandEntry = {
       command,
       callback,
       listener,
-      expirationTimeMs: Date.now()+this.defaultTimeoutMs,
+      expirationTimeMs: Date.now()+this.timeoutMs,
       resubscribe: true,
     };
     this.pendingCommands.push(commandEntry);
@@ -416,7 +452,7 @@ export default class XBrokerClient {
     return command.tag;
   }
 
-  submit(command: Command, callback: Callback, listener: ?Callback): string {
+  submit(command: Command, callback: Callback, listener: ?Listener): string {
     command.tag = this.seq.toString();
     this.seq++;
 
@@ -424,7 +460,7 @@ export default class XBrokerClient {
       command,
       callback,
       listener,
-      expirationTimeMs: Date.now()+this.defaultTimeoutMs,
+      expirationTimeMs: Date.now()+this.timeoutMs,
       resubscribe: false,
     };
     this.pendingCommands.push(commandEntry);
@@ -434,12 +470,26 @@ export default class XBrokerClient {
     return command.tag;
   }
 
-  command(agent: string, cmd: string, args: Array<CommandArg>, callback: Callback, listener: ?Callback): string {
+  submitAsync(command: Command, listener: ?Listener): Promise<mixed> {
+    const self = this;
+    return new Promise(function(resolve, reject) {
+      const callback: Callback = (error, result: mixed) => {
+        if(error) {
+          reject(error);
+        } else {
+          resolve(result);
+        }
+      };
+      self.submit(command, callback, listener);
+    });
+  }
+
+  command(agent: string, cmd: string, args: Array<CommandArg>, callback: Callback, listener: ?Listener): string {
     const command = {tag: "", agent: agent, cmd: cmd, args: args};
     return this.submit(command, callback, listener);
   }
 
-  commandAsync(agent: string, cmd: string, args: Array<CommandArg>, listener: ?Callback): Promise<mixed> {
+  commandAsync(agent: string, cmd: string, args: Array<CommandArg>, listener: ?Listener): Promise<mixed> {
     const self = this;
     return new Promise(function(resolve, reject) {
       const callback: Callback = (error, result: mixed) => {
@@ -484,8 +534,7 @@ export default class XBrokerClient {
         }
         this.setMessage("Reconnecting now");
         try {
-          this.socket = new WebSocket(this.url);
-          this.initSocket(this.socket);
+          this.createSocket();
         } catch(e) {
           this.setMessage("RECONNECT ERROR: "+e.toString());
         }
