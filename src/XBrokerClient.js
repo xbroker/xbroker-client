@@ -140,8 +140,6 @@ export default class XBrokerClient {
     } catch(e) {
       this.setMessage("CONNECTION ERROR: "+e.toString());
     }
-
-    this.startWatchdog();
   }
 
   changeState(state: string): void {
@@ -197,6 +195,8 @@ export default class XBrokerClient {
     this.socket.addEventListener('close', (event) => {
       this.onClose(event);
     });
+
+    this.startWatchdog();
   }
 
   onOpen() {
@@ -253,6 +253,10 @@ export default class XBrokerClient {
       }
       break;
     }
+
+    default: {
+      break;
+    }
     }
   }
 
@@ -292,6 +296,10 @@ export default class XBrokerClient {
           delete this.psubscriptions[pattern];
         }
       }
+      break;
+    }
+
+    default: {
       break;
     }
     }
@@ -422,6 +430,9 @@ export default class XBrokerClient {
           }
           break;
         }
+        default: {
+          break;
+        }
         }
 
         try {
@@ -543,6 +554,11 @@ export default class XBrokerClient {
       this.reconnectIntervalMs += 1000;
       if(this.reconnectIntervalMs > this.maxReconnectIntervalMs) {
         this.reconnectIntervalMs = this.maxReconnectIntervalMs
+      }
+
+      if(this.watchdogTimer) {
+        clearInterval(this.watchdogTimer);
+        this.watchdogTimer = null;
       }
     }
   }
