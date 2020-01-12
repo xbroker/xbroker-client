@@ -34,9 +34,12 @@ declare type Message = {|
 |};
 
 declare type Callback = (error: ?Error, data: ?Resp) => void;
-declare type Listener = (message: Message) => void;
+declare type Listener = {|
+  message: (message: Message) => void,
+  flush: ?() => void,
+|};
 
-declare type CommandArg = string|number|boolean|{};
+declare type CommandArg = string | number | boolean | {};
 
 declare type Command = {
   tag: string,
@@ -92,6 +95,10 @@ export default class XBrokerClient {
 
   isAlive: boolean;
 
+  pendingFlushes: {
+    [string]: Listener;
+  };
+
   constructor(url: string, props: any, browser?: boolean) {
     this.url = url;
     this.browser = false;
@@ -111,6 +118,7 @@ export default class XBrokerClient {
     this.reconnectTimer = null;
     this.watchdogTimer = null;
     this.isAlive = false;
+    this.pendingFlushes = {};
 
     if(browser) {
       this.browser = true;
@@ -161,11 +169,13 @@ export default class XBrokerClient {
   resubscribe(): void {
     for(const channel: string in this.subscriptions) {
       const ce: CommandEntry = this.subscriptions[channel];
+      // eslint-disable-next-line no-unused-vars
       const callback: Callback = (error: ?Error, data: ?Resp) => {};
       this.resubscribeCommand(ce.command.agent, ce.command.cmd, ce.command.args, callback, ce.listener);
     }
     for(const pattern: string in this.psubscriptions) {
       const ce: CommandEntry = this.psubscriptions[pattern];
+      // eslint-disable-next-line no-unused-vars
       const callback: Callback = (error: ?Error, data: ?Resp) => {};
       this.resubscribeCommand(ce.command.agent, ce.command.cmd, ce.command.args, callback, ce.listener);
     }
@@ -179,10 +189,12 @@ export default class XBrokerClient {
       this.socket = new WebSocket(this.url, options);
     }
 
+    // eslint-disable-next-line no-unused-vars
     this.socket.addEventListener('open', (event) => {
       this.onOpen();
     });
 
+    // eslint-disable-next-line no-unused-vars
     this.socket.addEventListener('error', (event) => {
       this.onError();
     });
@@ -218,6 +230,16 @@ export default class XBrokerClient {
     this.setMessage("");
   }
 
+  flushListeners() {
+    for(let key in this.pendingFlushes) {
+      const listener = this.pendingFlushes[key]
+      if(listener.flush) {
+        listener.flush()
+      }
+    }
+    this.pendingFlushes = {}
+  }
+
   processMessage(message: Message, data: string) {
     switch(message.status) {
     case "message": {
@@ -232,7 +254,10 @@ export default class XBrokerClient {
         return;
       }
       if(commandEntry.listener) {
-        commandEntry.listener(message);
+        commandEntry.listener.message(message);
+      }
+      if(commandEntry.listener) {
+          this.pendingFlushes[message.channel] = commandEntry.listener;
       }
       break;
     }
@@ -249,7 +274,10 @@ export default class XBrokerClient {
         return;
       }
       if(commandEntry.listener) {
-        commandEntry.listener(message);
+        commandEntry.listener.message(message);
+      }
+      if(commandEntry.listener) {
+          this.pendingFlushes[message.pattern] = commandEntry.listener;
       }
       break;
     }
@@ -349,6 +377,7 @@ export default class XBrokerClient {
         }
       }
     }
+    this.flushListeners();
   }
 
   onClose(event: any) {
@@ -360,7 +389,7 @@ export default class XBrokerClient {
 
   failSentCommands(message: string) {
     for(let tag in this.sentCommands) {
-      const commandEntry:CommandEntry = this.sentCommands[tag];
+      const commandEntry: CommandEntry = this.sentCommands[tag];
       this.fail(commandEntry, message);
     }
     this.sentCommands = {};
@@ -569,6 +598,7 @@ export default class XBrokerClient {
       try {
         this.socket.send("PING");
       } catch(e) {
+        // eslint-disable-next-line no-empty
       }
     } else {
       try {
