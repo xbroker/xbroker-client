@@ -196,12 +196,13 @@ export default class XBrokerClient {
     const token = jwt.sign({username: this.username}, 'secret-key:'+this.password, {
       expiresIn : 10 * 24 * 60 * 60 * 1000 // 10 days
     })
-    const headers = {
-      Authorization: "Bearer "+token
-    }
     if(this.browser) {
-      this.socket = new WebSocket(this.url, { headers });
+      const protocols = ["wss", token]
+      this.socket = new WebSocket(this.url, protocols);
     } else {
+      const headers = {
+        "Authorization": "Bearer "+token
+      }
       const options = {headers, rejectUnauthorized: false};
       this.socket = new WebSocket(this.url, options);
     }
@@ -566,7 +567,9 @@ export default class XBrokerClient {
 
   close(): void {
     try {
-      this.socket.close();
+      if(this.socket) {
+        this.socket.close();
+      }
     } finally {
       if(this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);
