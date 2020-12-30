@@ -9,6 +9,7 @@
  */
 
 import WebSocket from 'isomorphic-ws';
+import jwt from 'jsonwebtoken';
 
 type StatusType =
   "ok" |
@@ -59,6 +60,8 @@ declare type CommandEntry = {
 export default class XBrokerClient {
 
   url: string;
+  username: string;
+  password: string;
   browser: boolean;
   socket: any;
   seq: number;
@@ -101,6 +104,8 @@ export default class XBrokerClient {
 
   constructor(url: string, props: any, browser?: boolean) {
     this.url = url;
+    this.username = 'xbroker';
+    this.password = 'xbroker';
     this.browser = false;
     this.seq = 1;
     this.sentCommands = {};
@@ -124,6 +129,12 @@ export default class XBrokerClient {
       this.browser = true;
     }
     if(this.props) {
+      if(this.props.username) {
+        this.username = this.props.username
+      }
+      if(this.props.password) {
+        this.password = this.props.password
+      }
       if(this.props.timeoutMs !== undefined && this.props.timeoutMs !== null) {
         this.timeoutMs = this.props.timeoutMs;
       }
@@ -182,10 +193,16 @@ export default class XBrokerClient {
   }
 
   createSocket(): void {
+    const token = jwt.sign({username: this.username}, 'secret-key:'+this.password, {
+      expiresIn : 10 * 24 * 60 * 60 * 1000 // 10 days
+    })
+    const headers = {
+      Authorization: "Bearer "+token
+    }
     if(this.browser) {
-      this.socket = new WebSocket(this.url);
+      this.socket = new WebSocket(this.url, { headers });
     } else {
-      const options = {rejectUnauthorized: false};
+      const options = {headers, rejectUnauthorized: false};
       this.socket = new WebSocket(this.url, options);
     }
 
@@ -196,7 +213,7 @@ export default class XBrokerClient {
 
     // eslint-disable-next-line no-unused-vars
     this.socket.addEventListener('error', (event) => {
-      this.onError();
+      this.onError(event);
     });
 
     this.socket.addEventListener('message', (event) => {
@@ -225,9 +242,13 @@ export default class XBrokerClient {
     this.resubscribe();
   }
 
-  onError() {
+  onError(event: any) {
     this.changeState("error");
-    this.setMessage("");
+    if(event.type === "error") {
+      this.setMessage(event.message);
+    } else {
+      this.setMessage("");
+    }
   }
 
   flushListeners() {

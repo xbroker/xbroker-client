@@ -10,12 +10,14 @@
 
 import XBrokerClient from '../src/XBrokerClient'
 
-const url = "ws://localhost:3555"
+const url = "wss://localhost:3588"
 const agent = "redis"
+const username = "xbroker"
+const password = "secret"
 var client
 
 beforeEach(() => {
-  client = new XBrokerClient(url, {failFast: true})
+  client = new XBrokerClient(url, {username, password, failFast: true})
 })
 
 afterEach(() => {
@@ -44,7 +46,7 @@ test("illegal command", function(done) {
       expect(result).not.toBeNull()
       if(result) {
         expect(result.status).toBe("error")
-        expect(result.err).toMatch(("ReplyError: ERR unknown command 'eexists'": any))
+        expect(result.err).toMatch(("ReplyError: ERR unknown command `eexists`": any))
       }
       done()
     })

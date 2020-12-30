@@ -1,4 +1,4 @@
-![X-Broker](http://xbroker.github.io/xbroker/xbroker.svg)
+![XBroker Client](http://xbroker.github.io/xbroker/xbroker.svg)
 =====
 [![npm version](https://badge.fury.io/js/xbroker-client.svg)](https://badge.fury.io/js/xbroker-client)
 [![jest](https://img.shields.io/badge/tested_with-jest-brightgreen.svg)](https://facebook.github.io/jest/)
@@ -100,11 +100,17 @@ npm run build
 
 Test:
 ```shell
+# Start xbroker server and redis service in a docker stack
+./xbroker-test/setup.sh
+# Run the test suite
 npm test
 ```
 
 Lint, Build, Test, and Clean:
 ```shell
+# Start xbroker server and redis service in a docker stack
+./xbroker-test/setup.sh
+# Run all
 npm run all
 ```
 
