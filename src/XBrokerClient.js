@@ -231,9 +231,6 @@ export default class XBrokerClient {
   }
 
   onOpen() {
-    this.changeState("open");
-    this.setMessage("");
-
     this.reconnectIntervalMs = 1000;
     if(this.reconnectIntervalMs > this.maxReconnectIntervalMs) {
       this.reconnectIntervalMs = this.maxReconnectIntervalMs
@@ -242,6 +239,10 @@ export default class XBrokerClient {
     this.send();
 
     this.resubscribe();
+
+    this.changeState("open");
+
+    this.setMessage("");
   }
 
   onError(event: any) {
