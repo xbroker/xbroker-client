@@ -10,6 +10,7 @@
 
 import WebSocket from 'isomorphic-ws';
 import jwt from 'jsonwebtoken';
+import { hashPassword, decodeBase64 } from './EncodePassword'
 
 type StatusType =
   "ok" |
@@ -105,7 +106,7 @@ export default class XBrokerClient {
   constructor(url: string, props: any, browser?: boolean) {
     this.url = url;
     this.username = 'xbroker';
-    this.password = 'xbroker';
+    this.password = hashPassword('xbroker');
     this.browser = false;
     this.seq = 1;
     this.sentCommands = {};
@@ -133,7 +134,7 @@ export default class XBrokerClient {
         this.username = this.props.username
       }
       if(this.props.password) {
-        this.password = this.props.password
+        this.password = hashPassword(this.props.password)
       }
       if(this.props.timeoutMs !== undefined && this.props.timeoutMs !== null) {
         this.timeoutMs = this.props.timeoutMs;
@@ -193,8 +194,8 @@ export default class XBrokerClient {
   }
 
   createSocket(): void {
-    const token = jwt.sign({username: this.username}, 'secret-key:'+this.password, {
-      expiresIn : 10 * 24 * 60 * 60 * 1000 // 10 days
+    const token = jwt.sign({username: this.username}, 'secret-key:'+decodeBase64(this.password), {
+      expiresIn : 1 * 24 * 60 * 60 * 1000 // 1 day
     })
     if(this.browser) {
       const protocols = ["wss", token]

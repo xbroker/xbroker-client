@@ -13,7 +13,7 @@ import XBrokerClient from '../src/XBrokerClient'
 const url = "wss://localhost:3588"
 const agent = "redis"
 const username = "xbroker"
-const password = "secret"
+const password = "xbroker"
 var client
 
 beforeEach(() => {
